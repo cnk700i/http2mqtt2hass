@@ -6,6 +6,7 @@ tested On HA version: 0.82.1
 from base64 import b64decode
 from base64 import b64encode
 from Crypto.Cipher import AES
+import binascii
 from hashlib import sha1
 import logging
 import voluptuous as vol
@@ -249,21 +250,21 @@ async def async_setup_entry(hass, entry):
         _LOGGER.debug("%s response[%s]: [%s]", resData['uri'].split('/')[-1].split('?')[0], resData.get('msgId'), response.headers['Content-Type'], )
         res = AESCipher(decrypt_key).encrypt(json.dumps(res, ensure_ascii = False).encode('utf8'))
 
-        await hass.data[DATA_HTTP2MQTT2HASS_MQTT].async_publish(topic.replace('/request/','/response/'), res, 0, False)
+        await hass.data[DATA_HTTP2MQTT2HASS_MQTT].async_publish(topic.replace('/request/','/response/'), res, 2, False)
 
     @callback
     def message_received(topic, payload, qos):
         """Handle new MQTT state messages."""
-        _LOGGER.debug('get encrypt message: \n {}'.format(payload))        
-        payload = AESCipher(decrypt_key).decrypt(payload)
+        _LOGGER.debug('get encrypt message: \n {}'.format(payload))
         try:
+            payload = AESCipher(decrypt_key).decrypt(payload)
             req = json.loads(payload)
             _LOGGER.debug("raw message: %s", req)
             if(allowed_uri and req.get('uri').split('?')[0] not in allowed_uri):
                 _LOGGER.debug('uri not allowed: %s', req.get('uri'))
                 return
             hass.add_job(localHttp(req, topic))
-        except (JSONDecodeError,UnicodeDecodeError):
+        except (JSONDecodeError,UnicodeDecodeError,binascii.Error):
             import sys
             ex_type, ex_val, ex_stack = sys.exc_info()
             log = ''
@@ -271,7 +272,7 @@ async def async_setup_entry(hass, entry):
                 log += str(stack)
             _LOGGER.debug('decrypt failure, abandon:%s', log)
 
-    await hass.data[DATA_HTTP2MQTT2HASS_MQTT].async_subscribe("ai-home/http2mqtt2hass/"+app_key+"/request/#", message_received, 0, 'utf-8')
+    await hass.data[DATA_HTTP2MQTT2HASS_MQTT].async_subscribe("ai-home/http2mqtt2hass/"+app_key+"/request/#", message_received, 2, 'utf-8')
     return True
 
 class AESCipher:
